@@ -8,6 +8,9 @@ from typing import List, Dict, Tuple, Optional
 
 @dataclass 
 class ModelArgs:
+  """
+  Hyperparameter definitions for the class.
+  """
   dim: int = 4096
   n_layers: int = 32
   n_heads: int = 32
