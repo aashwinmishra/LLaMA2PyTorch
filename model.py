@@ -27,8 +27,8 @@ class ModelArgs:
 class Transformer(nn.Module):
   def __init__(self, args: ModelArgs) -> None:
     super().__init__()
-    self.args = args 
-    self.vocab_size = args.vocab_size 
+    self.args = args
+    self.vocab_size = args.vocab_size
     self.n_layers = args.n_layers
     self.tok_embeddings = nn.Embedding(args.vocab_size, args.dim)
     self.layers = nn.ModuleList()
@@ -36,5 +36,15 @@ class Transformer(nn.Module):
       self.layers.append(EncoderBlock(args))
     self.norm = RMSNorm(args.dim, eps=args.norm_eps)
     self.output = nn.Linear(args.dim, args.vocab_size, bias=False)
-    self.freqs_complex = precompute_theta_pos_frequencies(args.dim // args.n_heads, args.max_seq_length * 2,  device=args.device)
+    self.freqs_complex = precompute_theta_pos_frequencies(args.dim // args.n_heads, args.max_seq_length * 2, device=args.device)
+
+  def forward(self, tokens: torch.Tensor, start_pos: int):
+    #Input Shape:                         [batch_size, sequence_length]
+    batch_size, seq_len = tokens.shape
+    h = self.tok_embeddings(tokens)       #[batch_size, sequence_length, d_model]
+    freqs_complex = self.freqs_complex[start_pos: start_pos + seq_len]
+    for layer in self.layers:
+      h = layer(h, start_pos, freqs_complex)
+    h = self.norm(h)
+    return self.output(h).float()
 
