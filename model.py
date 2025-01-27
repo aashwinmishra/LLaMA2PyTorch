@@ -44,6 +44,16 @@ def apply_rotary_embeddings(x: torch.Tensor,
   return x_out
 
 
+class RMSNorm(nn.Module):
+  def __init_(self, emb_dim: int, eps: float=1e-6):
+    super().__init__()
+    self.eps = eps 
+    self.scale = nn.Parameter(torch.ones(emb_dim))
+
+  def forward(self, x):
+    return self.scale * x / (torch.square(x).mean(dim=-1, keepdim=True).sqrt() + self.eps)
+
+
 class Transformer(nn.Module):
   def __init__(self, args: ModelArgs) -> None:
     super().__init__()
