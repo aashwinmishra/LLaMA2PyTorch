@@ -54,6 +54,24 @@ class RMSNorm(nn.Module):
     return self.scale * x / (torch.square(x).mean(dim=-1, keepdim=True).sqrt() + self.eps)
 
 
+class EncoderBlock(nn.Module):
+  def __init__(self, args: ModelArgs):
+    super().__init__()
+    self.n_heads = args.n_heads
+    self.n_kv_heads = args.n_kv_heads
+    self.dim = args.dim 
+    self.head_dim = args.dim // args.n_heads
+    self.attention = SelfAttention(args)
+    self.feed_forward = FeedForward(args)
+    self.attention_norm = RMSNorm(args.dim, args.norm_eps)
+    self.ffn_norm = RMSNorm(args.dim, args.norm_eps)
+
+  def forward(self, x, start_pos, freqs_complex):
+    h = x + self.attention.forward(self.attention_norm(x), start_pos, freqs_complex)
+    out = h + self.feed_forward(self.ffn_norm(h))
+    return out 
+
+
 class Transformer(nn.Module):
   def __init__(self, args: ModelArgs) -> None:
     super().__init__()
