@@ -54,6 +54,50 @@ class RMSNorm(nn.Module):
     return self.scale * x / (torch.square(x).mean(dim=-1, keepdim=True).sqrt() + self.eps)
 
 
+class SelfAttention(nn.Module):
+  def __init__(self, args: ModelArgs):
+    super().__init__()
+    self.n_kv_heads = args.n_heads if args.n_kv_heads is None else args.n_kv_heads
+    self.n_heads_q = args.n_heads 
+    self.n_rep = self.n_heads_q // self.n_kv_heads
+    self.head_dim = args.dim // args.n_heads
+    self.wq = nn.Linear(args.dim, args.n_heads*self.head_dim, bias=False)
+    self.wk = nn.Linear(args.dim, args.n_kv_heads*self.head_dim, bias=False)
+    self.wv = nn.Linear(args.dim, args.n_kv_heads*self.head_dim, bias=False)
+    self.wo = nn.Linear(args.n_heads*self.head_dim, args.dim, bias=False)
+
+    self.cache_k = torch.zeros(args.max_batch_size, args.max_seq_length, self.n_kv_heads, self.head_dim)
+    self.cache_v = torch.zeros(args.max_batch_size, args.max_seq_length, self.n_kv_heads, self.head_dim)
+
+  def forward(self, x, start_pos):
+    batch_size, seq_len, _ = x.shape 
+
+    q = self.wq(x).view(batch_size, seq_len, self.n_heads_q, self.head_dim)     #[batch_size, seq_len, self.n_heads, self.head_dim]
+    k = self.wk(x).view(batch_size, seq_len, self.n_kv_heads, self.head_dim)    #[batch_size, seq_len, self.n_kv_heads, self.head_dim]
+    v = self.wv(x).view(batch_size, seq_len, self.n_kv_heads, self.head_dim)    #[batch_size, seq_len, self.n_kv_heads, self.head_dim]
+
+    self.cache_k[:batch_size, start_pos:start_pos + seq_len] = k 
+    self.cache_v[:batch_size, start_pos:start_pos + seq_len] = v 
+
+    k = self.cache_k[:batch_size, :start_pos + seq_len]                         #[batch_size, seq_len+pos, n_kv_heads, head_dim]
+    v = self.cache_v[:batch_size, :start_pos + seq_len]                         #[batch_size, seq_len+pos, n_kv_heads, head_dim]
+
+    k = k.repeat_interleave(self.n_rep, dim=2)                                  #[batch_size, seq_len+pos, n_heads, head_dim]
+    v = v.repeat_interleave(self.n_rep, dim=2)                                  #[batch_size, seq_len+pos, n_heads, head_dim]
+
+    q = q.transpose(1, 2)                                                       #[batch_size, n_heads, seq_len, head_dim]
+    k = k.permute(0, 2, 3, 1)                                                   #[batch_size, n_heads, head_dim, seq_len+pos]
+    v = v.transpose(1, 2)                                                       #[batch_size, n_heads, seq_len+pos, head_dim]
+
+    scores = torch.matmul(q, k) / math.sqrt(self.head_dim)                      #[batch_size, n_heads, seq_len, seq_len+pos]
+    attn = F.softmax(scores, dim=-1)                                            #[batch_size, n_heads, seq_len, seq_len+pos]
+
+    out = torch.matmul(attn, v)                                                 #[batch_size, n_heads, seq_len, head_dim]
+    out = out.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)        #[batch_size, seq_len, dim]
+    out = self.wo(out)                                                          #[batch_size, seq_len, dim]
+    return out
+
+
 class EncoderBlock(nn.Module):
   def __init__(self, args: ModelArgs):
     super().__init__()
