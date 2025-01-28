@@ -100,6 +100,25 @@ class SelfAttention(nn.Module):
     return out
 
 
+class FeedForward(nn.Module):
+  def __init__(self, args: ModelArgs):
+    super().__init__()
+    hidden_dim = int(args.dim * 8/3) 
+    if args.ffn_dim_multiplier is not None:
+      hidden_dim = int(args.ffn_dim_multiplier * hidden_dim)
+    hidden_dim = math.ceil(hidden_dim / args.multiple_of) * args.multiple_of
+
+    self.w1 = nn.Linear(args.dim, hidden_dim, bias=False)
+    self.w2 = nn.Linear(hidden_dim, args.dim, bias=False)
+    self.w3 = nn.Linear(args.dim, hidden_dim, bias=False)
+
+  def forward(self, x):
+    swish = F.silu(self.w1(x))
+    x_V = self.w3(x)
+    x = swish * x_V 
+    return self.w2(x)
+
+
 class EncoderBlock(nn.Module):
   def __init__(self, args: ModelArgs):
     super().__init__()
