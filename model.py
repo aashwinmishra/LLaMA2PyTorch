@@ -65,16 +65,18 @@ class SelfAttention(nn.Module):
     self.wk = nn.Linear(args.dim, args.n_kv_heads*self.head_dim, bias=False)
     self.wv = nn.Linear(args.dim, args.n_kv_heads*self.head_dim, bias=False)
     self.wo = nn.Linear(args.n_heads*self.head_dim, args.dim, bias=False)
-
     self.cache_k = torch.zeros(args.max_batch_size, args.max_seq_length, self.n_kv_heads, self.head_dim)
     self.cache_v = torch.zeros(args.max_batch_size, args.max_seq_length, self.n_kv_heads, self.head_dim)
 
-  def forward(self, x, start_pos):
+  def forward(self, x, start_pos, freqs_complex):
     batch_size, seq_len, _ = x.shape 
 
     q = self.wq(x).view(batch_size, seq_len, self.n_heads_q, self.head_dim)     #[batch_size, seq_len, self.n_heads, self.head_dim]
     k = self.wk(x).view(batch_size, seq_len, self.n_kv_heads, self.head_dim)    #[batch_size, seq_len, self.n_kv_heads, self.head_dim]
     v = self.wv(x).view(batch_size, seq_len, self.n_kv_heads, self.head_dim)    #[batch_size, seq_len, self.n_kv_heads, self.head_dim]
+
+    q = apply_rotary_embeddings(q, freqs_complex, x.device)
+    k = apply_rotary_embeddings(k, freqs_complex, x.device)
 
     self.cache_k[:batch_size, start_pos:start_pos + seq_len] = k 
     self.cache_v[:batch_size, start_pos:start_pos + seq_len] = v 
