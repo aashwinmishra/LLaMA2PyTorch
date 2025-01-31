@@ -45,13 +45,13 @@ def apply_rotary_embeddings(x: torch.Tensor,
 
 
 class RMSNorm(nn.Module):
-  def __init_(self, emb_dim: int, eps: float=1e-6):
+  def __init__(self, emb_dim: int, eps: float=1e-6):
     super().__init__()
     self.eps = eps 
-    self.scale = nn.Parameter(torch.ones(emb_dim))
+    self.weight = nn.Parameter(torch.ones(emb_dim))
 
   def forward(self, x):
-    return self.scale * x / (torch.square(x).mean(dim=-1, keepdim=True).sqrt() + self.eps)
+    return self.weight * x / (torch.square(x).mean(dim=-1, keepdim=True).sqrt() + self.eps)
 
 
 class SelfAttention(nn.Module):
@@ -62,8 +62,8 @@ class SelfAttention(nn.Module):
     self.n_rep = self.n_heads_q // self.n_kv_heads
     self.head_dim = args.dim // args.n_heads
     self.wq = nn.Linear(args.dim, args.n_heads*self.head_dim, bias=False)
-    self.wk = nn.Linear(args.dim, args.n_kv_heads*self.head_dim, bias=False)
-    self.wv = nn.Linear(args.dim, args.n_kv_heads*self.head_dim, bias=False)
+    self.wk = nn.Linear(args.dim, self.n_kv_heads*self.head_dim, bias=False)
+    self.wv = nn.Linear(args.dim, self.n_kv_heads*self.head_dim, bias=False)
     self.wo = nn.Linear(args.n_heads*self.head_dim, args.dim, bias=False)
     self.cache_k = torch.zeros(args.max_batch_size, args.max_seq_length, self.n_kv_heads, self.head_dim)
     self.cache_v = torch.zeros(args.max_batch_size, args.max_seq_length, self.n_kv_heads, self.head_dim)
@@ -128,8 +128,8 @@ class EncoderBlock(nn.Module):
     self.head_dim = args.dim // args.n_heads
     self.attention = SelfAttention(args)
     self.feed_forward = FeedForward(args)
-    self.attention_norm = RMSNorm(args.dim, args.norm_eps)
-    self.ffn_norm = RMSNorm(args.dim, args.norm_eps)
+    self.attention_norm = RMSNorm(emb_dim=args.dim, eps=args.norm_eps)
+    self.ffn_norm = RMSNorm(emb_dim=args.dim, eps=args.norm_eps)
 
   def forward(self, x, start_pos, freqs_complex):
     h = x + self.attention.forward(self.attention_norm(x), start_pos, freqs_complex)
